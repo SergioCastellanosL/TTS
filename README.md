@@ -70,7 +70,7 @@ TextSpeech/
 
 1. Run the script:
     ```bash
-    python main.py
+    python ttsv2.py
     ```
 2. A draggable button will appear.
 3. Click the button to open a textbox popup.
