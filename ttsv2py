@@ -1,0 +1,133 @@
+import tkinter as tk
+import subprocess
+import time
+import pygetwindow as gw
+import win32gui
+import win32con
+import sounddevice as sd
+import numpy as np
+from gtts import gTTS
+import io
+import soundfile as sf
+import ttkbootstrap as ttkb
+
+popup = None
+
+def open_and_minimize_voicemeeter():
+    # Adjust the path to match your Voicemeeter install location
+    vm_path = r"C:\Program Files (x86)\VB\Voicemeeter\voicemeeterpro_x64.exe"
+    
+    # Launch Voicemeeter
+    subprocess.Popen(vm_path)
+    
+    # Give it time to open
+    time.sleep(3)
+
+    # Find the window
+    for window in gw.getWindowsWithTitle("Voicemeeter"):
+        if window.visible:
+            hwnd = window._hWnd
+            # Minimize the window
+            win32gui.ShowWindow(hwnd, win32con.SW_MINIMIZE)
+            break
+    else:
+        print("Voicemeeter window not found.")
+
+def speak_to_device(text, device_name="VB-Audio Virtual Cable"):
+
+    # Use Google TTS to generate speech
+    tts = gTTS(text=text, lang='es')  # Spanish
+    fp = io.BytesIO()
+    tts.write_to_fp(fp)
+    fp.seek(0)
+
+    # Read as NumPy array
+    data, samplerate = sf.read(fp, dtype='float32')
+
+    # List devices to find correct index
+    devices = sd.query_devices()
+    device_index = None
+    for i, d in enumerate(devices):
+        if device_name.lower() in d['name'].lower() and d['max_output_channels'] > 0:
+            device_index = i
+            break
+
+    if device_index is None:
+        print(f"Device '{device_name}' not found!")
+        return
+
+    print(f"Using device: {devices[device_index]['name']}")
+    sd.play(data, samplerate=samplerate, device=device_index)
+    sd.wait()
+
+def open_textbox():
+    global popup, entry
+    # If already open, bring to front
+    if popup and popup.winfo_exists():
+        popup.lift()
+        return
+    bx = root.winfo_rootx()
+    by = root.winfo_rooty()
+    popup = ttkb.Toplevel()
+    popup.title("")
+    popup.overrideredirect(True)
+    popup.attributes("-topmost", True)
+    popup.geometry(f"+{bx + 110}+{by}")
+
+    entry = ttkb.Entry(popup, width=50, bootstyle="info")
+    entry.pack(padx=10, pady=10)
+    entry.focus_set()
+
+    def on_enter(event=None):
+        speak_to_device(entry.get(), device_name="VB-Audio Virtual Cable")
+        entry.delete(0, tk.END)
+    # Pressing Enter will speak
+    entry.bind("<Return>", on_enter)
+    popup.bind("<Escape>", lambda e: popup.destroy())
+
+def start_move(event):
+    root.offset_x = event.x
+    root.offset_y = event.y
+    root.dragging = False
+
+def do_move(event):
+    x = event.x_root - root.offset_x
+    y = event.y_root - root.offset_y
+    root.geometry(f"+{x}+{y}")
+    root.dragging = True
+    move_popup_with_button()
+
+def end_move(event):
+    if not root.dragging:
+        open_textbox()
+
+def move_popup_with_button():
+    if popup and popup.winfo_exists():
+        bx = root.winfo_rootx()
+        by = root.winfo_rooty()
+        popup.geometry(f"+{bx + 110}+{by}")
+#root = tk.Tk()
+root = ttkb.Window(themename="darkly")
+root.title("TTS Button")
+root.geometry("100x50")
+root.attributes("-topmost", True)
+root.overrideredirect(True)
+
+button = ttkb.Button(root, text="🔊", bootstyle="info", width=10)
+#button = ttkb.Button(root, text="🔊", font=("Arial", 16))
+button.pack(fill="both", expand=True)
+
+button.bind("<Button-1>", start_move)
+button.bind("<B1-Motion>", do_move)
+button.bind("<ButtonRelease-1>", end_move)
+
+# Right-click menu
+menu = ttkb.Menu(root, tearoff=0)
+menu.add_command(label="Exit", command=root.destroy)
+
+def show_menu(event):
+    menu.post(event.x_root, event.y_root)
+
+button.bind("<Button-3>", show_menu)
+open_and_minimize_voicemeeter()
+root.mainloop()
